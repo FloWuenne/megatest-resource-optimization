@@ -1,5 +1,5 @@
 # megatest-resource-optimization
-This repository contains scripts to generate optimized Neextflow configurations for resource utilization for nf-core pipeline AWS Megatests.
+This repository contains scripts to generate optimized Nextflow configurations for resource utilization for nf-core pipeline AWS Megatests.
 
 You can find all resource optimized configs based on previous runs under `/optimized_configs`.
 
