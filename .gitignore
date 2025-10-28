@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+*.sqlite3
+*.db
+*.env
+.env.*
+*.pkl
+*.h5
+*.ipynb_checkpoints
+*.coverage
+.cache/
+.mypy_cache/
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+*.pyre/
+*.pytype/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Bash
+*.sh~
+*.bak
+*.swp
+*.swo
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+
+# Folders
+optimized_configs_tests/
