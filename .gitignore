@@ -1,2 +1,34 @@
+# Generated output directories
+workflow_info/
+task_metrics/
+
+# Workspace-specific data
 aws_megatests
+
+# IDE and editor files
 .claude
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*secret*
+*credential*
+
+# OS files
+.DS_Store
+Thumbs.db
