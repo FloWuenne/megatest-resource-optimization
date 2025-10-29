@@ -14,6 +14,7 @@ Note: Config files are named using Release Tags (e.g., '2.15.0') when available,
       for old revision-based filenames.
 """
 
+import argparse
 import csv
 from pathlib import Path
 import yaml
@@ -92,7 +93,7 @@ def create_combined_config(base_config_path, optimized_config_path, output_path)
         f.write(combined)
 
 
-def create_yaml_config(pipeline_name, metadata, config_file, output_path, is_optimized=True):
+def create_yaml_config(pipeline_name, metadata, config_file, output_path, compute_env, is_optimized=True):
     """Create seqerakit YAML launch config."""
     # Construct launch name and label
     suffix = 'optimized' if is_optimized else 'baseline'
@@ -111,7 +112,7 @@ def create_yaml_config(pipeline_name, metadata, config_file, output_path, is_opt
         'name': launch_name,
         'workspace': 'nf-core/ResourceOptimization',
         'pipeline': metadata['repository'],
-        'compute-env': 'aws_ireland_fusionv2_nvme_cpu_snapshots',
+        'compute-env': compute_env,
         'profile': profile,
         'revision': metadata['revision'],
         'config': config_file,
@@ -129,6 +130,17 @@ def create_yaml_config(pipeline_name, metadata, config_file, output_path, is_opt
 
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Generate seqerakit YAML configs and combined Nextflow configs for each pipeline.'
+    )
+    parser.add_argument(
+        '--compute-env',
+        default='aws_ireland_fusionv2_nvme_cpu_snapshots',
+        help='Compute environment name to use for launches (default: aws_ireland_fusionv2_nvme_cpu_snapshots)'
+    )
+    args = parser.parse_args()
+
     # Setup paths
     base_dir = Path(__file__).parent
     optimized_configs_dir = base_dir / 'aws_megatests' / 'optimized_configs'
@@ -145,6 +157,7 @@ def main():
 
     # Load workflow metadata
     print(f"Loading workflow metadata from {workflow_csv}")
+    print(f"Using compute environment: {args.compute_env}")
     metadata = load_workflow_metadata(workflow_csv)
     print(f"Loaded metadata for {len(metadata)} workflows")
 
@@ -176,7 +189,7 @@ def main():
         relative_optimized_config = f'./configs/{pipeline_name}_{version_str}_optimized.config'
         yaml_optimized_path = yaml_configs_dir / f'{pipeline_name}_{version_str}_optimized.yml'
         create_yaml_config(pipeline_name, pipeline_metadata, relative_optimized_config,
-                          yaml_optimized_path, is_optimized=True)
+                          yaml_optimized_path, args.compute_env, is_optimized=True)
         generated_optimized += 1
 
         # 2. Create BASELINE config (base only, no optimized resources)
@@ -196,7 +209,7 @@ def main():
         relative_baseline_config = f'./configs/{pipeline_name}_{version_str}_baseline.config'
         yaml_baseline_path = yaml_configs_dir / f'{pipeline_name}_{version_str}_baseline.yml'
         create_yaml_config(pipeline_name, pipeline_metadata, relative_baseline_config,
-                          yaml_baseline_path, is_optimized=False)
+                          yaml_baseline_path, args.compute_env, is_optimized=False)
         generated_baseline += 1
 
         print(f"✓ Generated configs for {pipeline_name} ({version_str}): optimized + baseline")

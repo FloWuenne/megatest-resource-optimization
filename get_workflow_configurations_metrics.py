@@ -167,6 +167,39 @@ class SeqeraAPI:
         logger.info(f"✅ Total unique workflows fetched: {len(all_workflows)}")
         return {'workflows': all_workflows}
 
+    def get_workflow_details(
+        self,
+        workflow_id: str,
+        workspace_id: str
+    ) -> dict:
+        """
+        Get detailed information for a specific workflow including labels
+
+        Args:
+            workflow_id (str): Workflow ID to fetch details for
+            workspace_id (str): Workspace ID
+
+        Returns:
+            dict: Detailed workflow information including labels
+        """
+        endpoint = f"{self.base_url}/workflow/{workflow_id}"
+        params = {'workspaceId': workspace_id}
+
+        try:
+            response = requests.get(endpoint, headers=self.headers, params=params)
+            response.raise_for_status()
+            result = response.json()
+
+            # DEBUG: Print the entire response structure for the first few calls
+            logger.info(f"🔍 DEBUG - get_workflow_details for {workflow_id}:")
+            logger.info(f"🔍 DEBUG - Full response keys: {list(result.keys())}")
+            logger.info(f"🔍 DEBUG - Full response: {json.dumps(result, indent=2)}")
+
+            return result
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Failed to fetch workflow details for {workflow_id}: {str(e)}")
+            return {}
+
     def get_workflow_tasks(
         self,
         workflow_id: str,
@@ -261,8 +294,8 @@ def parse_args():
 
     parser.add_argument(
         "-p", "--profile",
-        default="test_full",
-        help="Filter workflows by profile (comma-separated list for multiple profiles, e.g., 'test_full,docker'). Default: test_full"
+        default=None,
+        help="Filter workflows by profile (comma-separated list for multiple profiles, e.g., 'test_full,docker'). If not specified, no profile filter is applied."
     )
 
     parser.add_argument(
@@ -336,7 +369,10 @@ def display_startup_banner(args):
         print(f"{Colors.CYAN}│{Colors.RESET} {Colors.BLUE}🔍{Colors.RESET} Status Filter:       {Colors.GRAY}All statuses{Colors.RESET}")
 
     # Profile filter
-    print(f"{Colors.CYAN}│{Colors.RESET} {Colors.GREEN}📋{Colors.RESET} Profile Filter:      {Colors.BOLD}{args.profile}{Colors.RESET}")
+    if args.profile:
+        print(f"{Colors.CYAN}│{Colors.RESET} {Colors.GREEN}📋{Colors.RESET} Profile Filter:      {Colors.BOLD}{args.profile}{Colors.RESET}")
+    else:
+        print(f"{Colors.CYAN}│{Colors.RESET} {Colors.BLUE}📋{Colors.RESET} Profile Filter:      {Colors.GRAY}All profiles{Colors.RESET}")
 
     # Label filter
     if args.labels:
@@ -888,9 +924,13 @@ def main():
             logger.info("ℹ️  No workflows found matching the criteria")
             return
 
-        # Parse profile filter
-        allowed_profiles = [p.strip() for p in args.profile.split(',')]
-        logger.info(f"📋 Filtering by profiles: {allowed_profiles}")
+        # Parse profile filter if provided
+        allowed_profiles = None
+        if args.profile:
+            allowed_profiles = [p.strip() for p in args.profile.split(',')]
+            logger.info(f"📋 Filtering by profiles: {allowed_profiles}")
+        else:
+            logger.info(f"📋 No profile filter specified, including all profiles")
 
         # Parse label filter if provided
         allowed_labels = None
@@ -911,29 +951,68 @@ def main():
             if status_val.upper() != 'SUCCEEDED':
                 continue
 
-            # Check if workflow has any of the allowed profiles
-            has_allowed_profile = any(allowed_profile in profile for allowed_profile in allowed_profiles)
-            if not has_allowed_profile:
-                continue
+            # Check if workflow has any of the allowed profiles (if filter is specified)
+            if allowed_profiles:
+                has_allowed_profile = any(allowed_profile in profile for allowed_profile in allowed_profiles)
+                if not has_allowed_profile:
+                    continue
 
             # Check labels if filter is specified
             if allowed_labels:
-                workflow_labels = nested.get('labels', [])
-                # Labels might be a list or comma-separated string
-                if isinstance(workflow_labels, str):
-                    workflow_labels = [label.strip() for label in workflow_labels.split(',')]
-                elif not isinstance(workflow_labels, list):
+                # Fetch detailed workflow information to get labels
+                wf_id = nested.get('id', '')
+                workspace = args.workspace_id if args.workspace_id else nested.get('workspaceId', '')
+
+                if not wf_id or not workspace:
+                    logger.warning(f"⚠️  Skipping workflow without ID or workspace")
+                    continue
+
+                # Fetch detailed workflow info including labels
+                detailed_wf = client.get_workflow_details(wf_id, workspace)
+
+                # DEBUG: Log all top-level keys to understand structure
+                logger.info(f"🔍 DEBUG - detailed_wf top-level keys: {list(detailed_wf.keys())}")
+
+                # Try to get labels from different possible locations
+                workflow_labels = detailed_wf.get('labels', [])
+                if not workflow_labels:
+                    # Try nested in 'workflow' key
+                    workflow_labels = detailed_wf.get('workflow', {}).get('labels', [])
+
+                # DEBUG: Log the raw labels structure for the first few workflows
+                if len(filtered) < 3:
+                    logger.info(f"🔍 DEBUG - Workflow {wf_id}: raw labels type = {type(workflow_labels)}, value = {workflow_labels}")
+
+                # Labels should be a list of dicts with 'name' field
+                if isinstance(workflow_labels, list) and workflow_labels:
+                    if isinstance(workflow_labels[0], dict):
+                        # Extract label names from dict objects
+                        workflow_labels = [label.get('name', '') for label in workflow_labels if isinstance(label, dict) and label.get('name')]
+                    # Filter out empty strings
+                    workflow_labels = [label.strip() for label in workflow_labels if label and isinstance(label, str) and label.strip()]
+                else:
                     workflow_labels = []
+
+                # DEBUG: Log processed labels
+                if len(filtered) < 3:
+                    logger.info(f"🔍 DEBUG - Processed labels: {workflow_labels}")
+                    logger.info(f"🔍 DEBUG - Checking against allowed labels: {allowed_labels}")
 
                 # Check if workflow has at least one of the allowed labels
                 has_allowed_label = any(label in allowed_labels for label in workflow_labels)
+
+                if len(filtered) < 3:
+                    logger.info(f"🔍 DEBUG - Has allowed label: {has_allowed_label}")
+
                 if not has_allowed_label:
                     continue
 
             filtered.append(wf)
 
         if not filtered:
-            logger.info(f"ℹ️  No workflows found matching profile(s) {allowed_profiles}, status 'SUCCEEDED', and label filter")
+            profile_msg = f"profile(s) {allowed_profiles}" if allowed_profiles else "any profile"
+            label_msg = f" and label filter" if allowed_labels else ""
+            logger.info(f"ℹ️  No workflows found matching {profile_msg}, status 'SUCCEEDED'{label_msg}")
             return
 
         # Fetch latest release information from nf-co.re
@@ -1155,8 +1234,11 @@ def main():
 
         # Print formatted table via logger
         print(f"\n{Colors.CYAN}{'='*80}{Colors.RESET}")
-        profile_display = args.profile if ',' not in args.profile else f"[{args.profile}]"
-        print(f"{Colors.BOLD}{Colors.YELLOW}📊 Filtered Workflows (profile={profile_display}, latest releases):{Colors.RESET}")
+        if args.profile:
+            profile_display = args.profile if ',' not in args.profile else f"[{args.profile}]"
+            print(f"{Colors.BOLD}{Colors.YELLOW}📊 Filtered Workflows (profile={profile_display}, latest releases):{Colors.RESET}")
+        else:
+            print(f"{Colors.BOLD}{Colors.YELLOW}📊 Filtered Workflows (all profiles, latest releases):{Colors.RESET}")
         print(f"{Colors.CYAN}{'='*80}{Colors.RESET}")
         logger.info("%-36s %-30s %-15s %-15s %-40s %-20s",
                    "ID", "REPOSITORY", "RELEASE TAG", "REVISION", "COMMIT ID", "SUBMIT TIME")
