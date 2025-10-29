@@ -1,6 +1,7 @@
 # Generated output directories
 workflow_info/
 task_metrics/
+seqerakit
 
 # Workspace-specific data
 aws_megatests
